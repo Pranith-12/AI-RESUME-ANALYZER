@@ -1,21 +1,16 @@
-function FeatureCard(props) {
+function FeatureCard({ icon, title, description }) {
   return (
-
-    <div className="bg-white shadow-lg rounded-xl p-6 w-64 text-center hover:scale-105 hover:shadow-2xl transition-transition duration-300">
-
-      <div className="flex justify-center mb-4">
-  {props.icon}
-</div>
-      <h2 className="text-2xl font-bold mt-4">
-        {props.title}
-      </h2>
-
-      <p className="text-gray-600 mt-3">
-        {props.description}
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+      <div className="w-14 h-14 rounded-xl bg-gray-50 flex items-center justify-center mb-4">
+        {icon}
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">
+        {title}
+      </h3>
+      <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+        {description}
       </p>
-
     </div>
-
   );
 }
 

@@ -4,59 +4,50 @@ const steps = [
   {
     number: 1,
     title: "Upload Resume",
-    description: "Upload your PDF resume securely."
+    description: "Upload your PDF resume securely with one click."
   },
   {
     number: 2,
     title: "AI Analysis",
-    description: "Our AI analyzes your resume."
+    description: "Our AI analyzes content, format, and keywords."
   },
   {
     number: 3,
     title: "ATS Score",
-    description: "Receive ATS compatibility score."
+    description: "Receive your ATS compatibility score and feedback."
   },
   {
     number: 4,
-    title: "Download Report",
-    description: "Download your improvement report."
+    title: "Improve & Match",
+    description: "Get suggestions and match with job descriptions."
   }
 ];
 
 function HowItWorks() {
   return (
+    <section id="how-it-works" className="py-24 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold text-gray-900">
+            How It Works
+          </h2>
+          <p className="text-gray-500 mt-4 text-lg">
+            Get your resume analyzed in four simple steps
+          </p>
+        </div>
 
-    <section className="py-24 bg-gray-100">
-
-      <h1 className="text-5xl font-bold text-center">
-
-        How It Works
-
-      </h1>
-
-      <p className="text-center text-gray-600 mt-4">
-
-        Get your resume analyzed in four simple steps.
-
-      </p>
-
-      <div className="grid grid-cols-4 gap-8 mt-16 px-20">
-
-        {steps.map((step,index)=>(
-
-          <StepCard
-             key={index}
-             number={step.number}
-             title={step.title}
-             description={step.description}
-          />
-
-        ))}
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          {steps.map((step, index) => (
+            <StepCard
+              key={index}
+              number={step.number}
+              title={step.title}
+              description={step.description}
+            />
+          ))}
+        </div>
       </div>
-
     </section>
-
   );
 }
 

@@ -1,109 +1,423 @@
-import { useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { useRef, useState, useCallback } from "react";
+import {
+  Upload,
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  TrendingUp,
+  Award,
+  Lightbulb,
+  Download,
+  Loader2,
+} from "lucide-react";
+import axios from "axios";
 
-function UploadSection() {
+const API_URL = "http://localhost:8000";
 
+function getScoreColor(score) {
+  if (score >= 80) return "text-green-600";
+  if (score >= 60) return "text-blue-600";
+  if (score >= 40) return "text-yellow-600";
+  return "text-red-600";
+}
+
+function getScoreBg(score) {
+  if (score >= 80) return "bg-green-600";
+  if (score >= 60) return "bg-blue-600";
+  if (score >= 40) return "bg-yellow-600";
+  return "bg-red-600";
+}
+
+function getRatingBadge(rating) {
+  switch (rating) {
+    case "Excellent":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "Good":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "Needs Improvement":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    default:
+      return "bg-red-100 text-red-700 border-red-200";
+  }
+}
+
+function UploadSection({ setResumeText }) {
   const fileInputRef = useRef(null);
 
+  const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  const handleClick = () => {
-    fileInputRef.current.click();
-  };
+  const handleClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   const handleFileChange = (event) => {
+    const selectedFile = event.target.files[0];
+    if (!selectedFile) return;
 
-    const file = event.target.files[0];
-
-    if(file){
-
-      setFileName(file.name);
-
+    if (selectedFile.type !== "application/pdf") {
+      setError("Please select a PDF file only.");
+      setFile(null);
+      setFileName("");
+      return;
     }
 
+    setFile(selectedFile);
+    setFileName(selectedFile.name);
+    setError("");
+    setResult(null);
+    setAiSuggestions(null);
+  };
+
+  const handleAnalyze = async () => {
+    if (!file) {
+      setError("Please select a PDF resume first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult(null);
+    setAiSuggestions(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await axios.post(`${API_URL}/upload-resume`, formData);
+
+      if (response.data.error) {
+        setError(response.data.error);
+        return;
+      }
+
+      setResult(response.data);
+      setResumeText(response.data.text);
+    } catch (err) {
+      console.error(err);
+      if (err.code === "ECONNABORTED" || !err.response) {
+        setError("Unable to connect to the backend. Make sure the server is running on http://localhost:8000");
+      } else {
+        setError(err.response?.data?.error || "Unable to analyze resume. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAiSuggestions = async () => {
+    if (!result?.text) return;
+
+    setAiLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("resume_text", result.text);
+
+      const response = await axios.post(`${API_URL}/ai-suggestions`, formData);
+      setAiSuggestions(response.data.suggestions);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleDownloadReport = () => {
+    if (!result) return;
+
+    const analysis = result.analysis;
+    let report = "RESUVIO - RESUME ANALYSIS REPORT";
+    report += "\n" + "=".repeat(50);
+    report += "\n\nFile: " + result.filename;
+    report += "\nDate: " + new Date().toLocaleDateString();
+    report += "\n\n" + "-".repeat(50);
+    report += "\nATS SCORE: " + analysis.score + " / 100";
+    report += "\nRating: " + analysis.rating;
+    report += "\nWord Count: " + analysis.word_count;
+    report += "\n\n" + "-".repeat(50);
+    report += "\nSTRENGTHS";
+    report += "\n" + "-".repeat(50);
+    analysis.strengths.forEach((s, i) => {
+      report += "\n  ✓ " + s;
+    });
+    report += "\n\n" + "-".repeat(50);
+    report += "\nSUGGESTIONS";
+    report += "\n" + "-".repeat(50);
+    analysis.suggestions.forEach((s) => {
+      report += "\n  • " + s;
+    });
+    report += "\n\n" + "-".repeat(50);
+    report += "\nTECHNICAL KEYWORDS";
+    report += "\n" + "-".repeat(50);
+    report += "\n  " + (analysis.keywords.length > 0 ? analysis.keywords.join(", ") : "None detected");
+    report += "\n\n" + "-".repeat(50);
+    report += "\nACTION WORDS FOUND";
+    report += "\n" + "-".repeat(50);
+    report += "\n  " + (analysis.action_words.length > 0 ? analysis.action_words.join(", ") : "None detected");
+
+    if (aiSuggestions && aiSuggestions.length > 0) {
+      report += "\n\n" + "-".repeat(50);
+      report += "\nAI SUGGESTIONS";
+      report += "\n" + "-".repeat(50);
+      aiSuggestions.forEach((s) => {
+        report += "\n  [" + s.category + "] " + s.suggestion;
+      });
+    }
+
+    report += "\n\n" + "=".repeat(50);
+    report += "\nGenerated by ResuVio - AI Resume Analyzer";
+
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "resuvio-report.txt";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
+    <section id="upload" className="py-24 bg-white">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-gray-900">
+            Upload Your Resume
+          </h2>
+          <p className="text-gray-500 mt-3 text-lg">
+            Upload your PDF resume and let our AI analyze it for ATS compatibility
+          </p>
+        </div>
 
-    <section className="py-24 bg-white">
-
-      <div className="max-w-3xl mx-auto">
-
-        <h2 className="text-4xl font-bold text-center">
-
-          Upload Resume
-
-        </h2>
-
-        <p className="text-center text-gray-600 mt-4">
-
-          Upload your resume and let AI analyze it.
-
-        </p>
-
+        {/* Upload Area */}
         <div
-
           onClick={handleClick}
-
-          className="mt-10 border-2 border-dashed border-blue-500 rounded-2xl p-16 text-center cursor-pointer hover:bg-blue-50 transition"
-
+          className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-300 group"
         >
-
-          <Upload
-            size={60}
-            className="mx-auto text-blue-600"
-          />
-
-          <h3 className="text-2xl font-semibold mt-6">
-
-            Drag & Drop Resume Here
-
+          <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+            <Upload size={28} className="text-blue-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mt-5">
+            {fileName ? fileName : "Click to upload your resume"}
           </h3>
-
-          <p className="text-gray-500 mt-2">
-
-            or click anywhere to browse
-
+          <p className="text-gray-400 mt-2 text-sm">
+            PDF files only · Max 10MB
           </p>
-
-          <p className="mt-6 font-medium text-blue-600">
-
-            {fileName || "No file selected"}
-
-          </p>
-
           <input
-
             type="file"
-
-            accept=".pdf"
-
+            accept=".pdf,application/pdf"
             ref={fileInputRef}
-
             onChange={handleFileChange}
-
             className="hidden"
-
           />
-
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <AlertCircle size={20} className="text-red-500 mt-0.5 shrink-0" />
+            <p className="text-red-700 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Analyze Button */}
         <div className="text-center mt-8">
-
-          <button className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition">
-
-            Analyze Resume
-
+          <button
+            onClick={handleAnalyze}
+            disabled={loading || !file}
+            className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/20"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                Analyzing your resume...
+              </>
+            ) : (
+              <>
+                <FileText size={20} />
+                Analyze Resume
+              </>
+            )}
           </button>
-
         </div>
 
+        {/* Results Dashboard */}
+        {result && (
+          <div className="mt-16 space-y-8">
+            {/* Score Header */}
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Analysis Results</h3>
+              <p className="text-gray-500 mt-1">Here's how your resume performs</p>
+            </div>
+
+            {/* Main Score Card */}
+            <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-8 text-center text-white shadow-xl shadow-blue-600/20">
+              <p className="text-blue-100 text-lg">ATS Compatibility Score</p>
+              <div className="flex items-center justify-center gap-3 mt-3">
+                <span className="text-7xl font-extrabold">{result.analysis.score}</span>
+                <span className="text-2xl text-blue-200 font-medium">/ 100</span>
+              </div>
+              <div className="mt-3">
+                <span className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold border ${getRatingBadge(result.analysis.rating)}`}>
+                  {result.analysis.rating}
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="mt-5 max-w-md mx-auto">
+                <div className="h-2 bg-blue-500/30 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-white rounded-full transition-all duration-1000"
+                    style={{ width: `${result.analysis.score}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Word Count</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{result.analysis.word_count}</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Skills Found</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{result.analysis.keywords.length}</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Action Words</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{result.analysis.action_words.length}</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center">
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Contact Score</p>
+                <p className={`text-2xl font-bold mt-1 ${getScoreColor(result.analysis.contact_score * 20)}`}>{result.analysis.contact_score}/15</p>
+              </div>
+            </div>
+
+            {/* Strengths & Suggestions */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Strengths */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle size={22} className="text-green-600" />
+                  <h4 className="text-lg font-bold text-green-700">Strengths</h4>
+                </div>
+                <ul className="space-y-2">
+                  {result.analysis.strengths.map((s, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-green-50 p-3 rounded-lg">
+                      <span className="text-green-500 mt-0.5">✓</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Suggestions */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <Lightbulb size={22} className="text-amber-500" />
+                  <h4 className="text-lg font-bold text-amber-600">Suggestions</h4>
+                </div>
+                <ul className="space-y-2">
+                  {result.analysis.suggestions.map((s, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-amber-50 p-3 rounded-lg">
+                      <span className="text-amber-500 mt-0.5">•</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Technical Keywords */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp size={22} className="text-purple-600" />
+                <h4 className="text-lg font-bold text-purple-700">Technical Keywords</h4>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {result.analysis.keywords.length > 0 ? (
+                  result.analysis.keywords.map((kw, i) => (
+                    <span key={i} className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full text-sm font-medium">
+                      {kw}
+                    </span>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-sm">No technical keywords detected</p>
+                )}
+              </div>
+            </div>
+
+            {/* Action Words */}
+            {result.analysis.action_words.length > 0 && (
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <Award size={22} className="text-blue-600" />
+                  <h4 className="text-lg font-bold text-blue-700">Action Words Detected</h4>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {result.analysis.action_words.map((w, i) => (
+                    <span key={i} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium">
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI Suggestions */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Lightbulb size={22} className="text-indigo-600" />
+                  <h4 className="text-lg font-bold text-indigo-700">AI Improvement Suggestions</h4>
+                </div>
+                <button
+                  onClick={fetchAiSuggestions}
+                  disabled={aiLoading}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50"
+                >
+                  {aiLoading ? "Loading..." : "Generate"}
+                </button>
+              </div>
+
+              {aiSuggestions ? (
+                <div className="space-y-3">
+                  {aiSuggestions.map((s, i) => (
+                    <div key={i} className="bg-indigo-50 p-3 rounded-lg">
+                      <span className="inline-block px-2 py-0.5 bg-indigo-200 text-indigo-800 rounded text-xs font-semibold mb-1">
+                        {s.category}
+                      </span>
+                      <p className="text-sm text-gray-700">{s.suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm">
+                  Click "Generate" to get AI-powered improvement suggestions
+                </p>
+              )}
+            </div>
+
+            {/* Download Button */}
+            <div className="text-center">
+              <button
+                onClick={handleDownloadReport}
+                className="inline-flex items-center gap-2 bg-gray-900 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-gray-800 transition-all duration-300 shadow-lg"
+              >
+                <Download size={20} />
+                Download Full Report
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-
     </section>
-
   );
-
 }
 
 export default UploadSection;
