@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 import os
+import tempfile
 import pdfplumber
 
 from utils.ats import calculate_ats_score
@@ -13,13 +14,18 @@ app = FastAPI()
 # --------------------------------
 # CORS Configuration
 # --------------------------------
+# Allow both local dev and production frontend URLs
+
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
+if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,32 +59,37 @@ async def upload_resume(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):
         return {"error": "Only PDF files are allowed."}
 
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    # Use a temporary file so we don't accumulate uploads on disk
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
 
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
+    try:
+        # Extract text from PDF
+        text = ""
+        with pdfplumber.open(tmp_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
 
-    # Extract text from PDF
-    text = ""
-    with pdfplumber.open(file_path) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+        if not text.strip():
+            return {"error": "Could not extract text from the PDF. Please try a different file."}
 
-    if not text.strip():
-        return {"error": "Could not extract text from the PDF. Please try a different file."}
+        # ATS Analysis
+        analysis = calculate_ats_score(text)
 
-    # ATS Analysis
-    analysis = calculate_ats_score(text)
-
-    return {
-        "filename": file.filename,
-        "message": "Resume analyzed successfully!",
-        "text": text,
-        "analysis": analysis,
-    }
+        return {
+            "filename": file.filename,
+            "message": "Resume analyzed successfully!",
+            "text": text,
+            "analysis": analysis,
+        }
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 # --------------------------------

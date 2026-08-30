@@ -11,8 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import axios from "axios";
-
-const API_URL = "http://localhost:8000";
+import API_URL from "../config";
 
 function getScoreColor(score) {
   if (score >= 80) return "text-green-600";
@@ -101,7 +100,7 @@ function UploadSection({ setResumeText }) {
     } catch (err) {
       console.error(err);
       if (err.code === "ECONNABORTED" || !err.response) {
-        setError("Unable to connect to the backend. Make sure the server is running on http://localhost:8000");
+        setError("Unable to connect to the backend. Please check that the server is running and try again.");
       } else {
         setError(err.response?.data?.error || "Unable to analyze resume. Please try again.");
       }
